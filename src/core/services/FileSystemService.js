@@ -4,6 +4,23 @@ export default class FileSystemService extends Service {
   constructor(app) {
     super(app, "fs");
   }
+  // List files by limit & sorting
+  listFilesLimit(
+    directory,
+    { offset = 0, limit = 50, sort = "name", asc = true } = {}
+  ) {
+    const params = new URLSearchParams({
+      directory,
+      offset: String(offset),
+      limit: String(limit),
+      sort,
+      asc: String(asc)
+    });
+
+    const url = `list?${params.toString()}`;
+
+    return this.request(url);
+  }
   // Get thumbnail
   thumbnail = filename =>
     this.request(`thumbnail?filename=${encodeURIComponent(filename)}`);
@@ -46,6 +63,11 @@ export default class FileSystemService extends Service {
       false
     );
   }
+  // Create File
+  createFile = filename =>
+    this.request("create_file", "POST", {
+      filename
+    });
   // Create directory
   createDirectory = dirname =>
     this.request("create_directory", "POST", { dirname });

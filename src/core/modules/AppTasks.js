@@ -1,3 +1,5 @@
+import Handler from "../Handler.js";
+
 class AppTask {
   constructor(cmd, handler, func, once = true) {
     this.cmd = cmd;
@@ -5,12 +7,12 @@ class AppTask {
     this.handler = handler;
 
     this.running = false;
-    this.task_result = null;
+    this.taskID = null;
 
     this.once = once;
     this.completed = false;
 
-    this.handler.onData(data => {
+    this.handler?.onData(data => {
       if (data.status === "ended") {
         this.running = false;
         this.completed = true;
@@ -18,51 +20,101 @@ class AppTask {
     });
   }
 
-  async __run() {
-    if (this.once && this.completed) throw Error("Task already completed");
+  async init({
+    noSudo = false,
+    allowCommands = false,
+    outputMode = "send"
+  } = {}) {
+    if (this.taskID) throw Error("Task already Created");
 
-    this.task_result = await this.func("tasks.run_task", {
+    const { data, error } = await this.func("tasks.create_task", {
       args: [`${this.cmd}`.trim()],
-      options: { handler_id: this.handler.handlerID }
+      options: {
+        no_sudo: noSudo,
+        allow_commands: allowCommands,
+        output_mode: outputMode
+      }
     });
 
-    if (this.task_result?.error) {
-      throw new Error(this.task_result.error.detail);
-    }
+    if (error) throw Error(error.detail);
 
-    return this.task_result;
+    this.taskID = data.id;
+
+    return data;
   }
 
-  async run() {
-    if (this.running) return;
+  async __run() {
+    if (!this.taskID) throw Error("Task not initialized call 'init' first");
+
+    if (this.once && this.completed)
+      throw Error("Task (Once) already completed");
 
     this.running = true;
 
-    try {
-      return await this.__run();
-    } finally {
-      if (!this.once) {
-        this.running = false;
+    const { error, data } = await this.func("tasks.run_task", {
+      args: [],
+      options: {
+        task_id: this.taskID,
+        handler_id: this.handler ? this.handler.handlerID : null
       }
+    });
+
+    if (error) {
+      this.running = false;
+      throw Error(error.detail);
     }
+
+    return data;
+  }
+
+  async run() {
+    if (this.running) throw Error("Task already running");
+
+    this.running = true;
+
+    return await this.__run();
   }
 
   async send(input) {
-    if (!this.task_result || !input) throw Error("No input or task error");
+    if (!this.taskID || !input) throw Error("No input or task error");
 
     await this.func("tasks.send_input", {
-      args: [this.task_result.data, input]
+      args: [this.taskID, input]
+    });
+  }
+
+  async command(event, payload = {}) {
+    return await this.func("tasks.task_command", {
+      args: [this.taskID, event],
+      options: { payload }
+    });
+  }
+
+  async getInfo(event, payload = {}) {
+    return await this.func("tasks.get_task_info", {
+      args: [this.taskID]
+    });
+  }
+
+  async getSavedOutput() {
+    return await this.func("tasks.get_task_output", {
+      args: [this.taskID]
     });
   }
 
   on(callback) {
-    this.handler.onData(callback);
+    this.handler?.onData(callback);
+  }
+
+  _kill(remove = false) {
+    return this.func("tasks.kill", {
+      args: [this.taskID],
+      options: { remove }
+    });
   }
 
   async kill() {
-    await this.func("tasks.kill", {
-      args: [this.task_result.data]
-    });
+    return await this._kill();
   }
 }
 
@@ -86,44 +138,205 @@ export default class AppTasks {
 
     const handler = this.app.createHandler();
 
-    if (once) {
-      handler.onended = () => {
-        this.app.removeHandler(handler.handlerID);
-      };
-    }
-
     return new AppTask(cmd, handler, this.runFunc, once);
   }
 
-  async runTask(cmd, callback) {
+  // Kill & Clear task and handler
+  async clearTask(task) {
+    await task._kill(true);
+
+    this.app.removeHandler(task.handler.handlerID);
+  }
+
+  //
+  async doTask(cmd, callback) {
     const task = this.createTask(cmd);
-    task.on(callback);
+    await task.init();
+
+    task.on(data => {
+      callback({ data, task });
+    });
 
     return await task.__run();
   }
 
-  async runTaskSync(cmd) {
-    const fullData = [];
-    let flag = false;
+  // Checks every delayCheck(ms) = 5 seconds
+  // if no output then gets taskInfo
+  // checks if completed then returns data
+  // Runs task with save mode and return data, error
+  async runSaveTask(cmd, callback = null, delayCheck = 5000) {
+    const task = this.createTask(cmd);
 
-    return new Promise((resolve, reject) => {
-      try {
-        this.runTask(cmd, data => {
-          if (data.status === "started") {
-            flag = true;
-          } else if (data.status === "ended") {
-            resolve(fullData.join("\n").trim());
-          } else if (data.status === "output") {
-            const output = data.output?.trim?.() || "";
-            if (flag && output.length > 0) {
-              fullData.push(output);
-            }
-          } else if (data.status === "error") {
-            reject(new Error(data.output || "Unknown error"));
-          }
+    return new Promise(resolve => {
+      let timer;
+      let finished = false;
+
+      const cleanup = async () => {
+        clearTimeout(timer);
+        await this.clearTask(task);
+      };
+
+      const fail = async error => {
+        if (finished) return;
+
+        finished = true;
+        await cleanup();
+
+        resolve({
+          data: null,
+          error: error instanceof Error ? error : new Error(String(error))
         });
-      } catch (err) {
-        reject(err);
+      };
+
+      const complete = async () => {
+        if (finished) return;
+
+        finished = true;
+
+        try {
+          const { data, error } = await task.getSavedOutput();
+
+          await cleanup();
+
+          if (error) {
+            return resolve({
+              data: null,
+              error: new Error(error.detail)
+            });
+          }
+
+          resolve({
+            data: data || [],
+            error: null
+          });
+        } catch (err) {
+          await cleanup();
+
+          resolve({
+            data: null,
+            error: err
+          });
+        }
+      };
+
+      const resetWatchdog = () => {
+        if (finished) return;
+
+        clearTimeout(timer);
+
+        timer = setTimeout(async () => {
+          if (finished) return;
+
+          try {
+            const { data, error } = await task.getInfo();
+
+            if (finished) return;
+
+            if (error) {
+              return await fail(new Error(error.detail));
+            }
+
+            if (data.completed) {
+              if (data.error_text) {
+                return await fail(new Error(data.error_text));
+              }
+
+              return await complete();
+            }
+
+            resetWatchdog();
+          } catch (err) {
+            return await fail(err);
+          }
+        }, delayCheck);
+      };
+
+      (async () => {
+        try {
+          await task.init({
+            outputMode: callback ? "*" : "save"
+          });
+
+          resetWatchdog();
+
+          task.on(async ({ status, output }) => {
+            if (finished) return;
+
+            if (callback) {
+              try {
+                callback({ status, output });
+              } catch {
+                // Ignore callback errors
+              }
+            }
+
+            if (status === "error") {
+              return await fail(output);
+            }
+
+            if (status === "ended") {
+              return await complete();
+            }
+
+            // Refresh watchdog only while task is active.
+            resetWatchdog();
+          });
+
+          await task.__run();
+        } catch (err) {
+          await fail(err);
+        }
+      })();
+    });
+  }
+
+  // Long polling task
+  async runTaskPolling(cmd, delayCheck = 5000) {
+    const task = new AppTask(cmd, null, this.runFunc, true);
+
+    try {
+      await task.init({
+        outputMode: "save"
+      });
+
+      await task.__run();
+
+      while (true) {
+        const { data, error } = await task.getInfo();
+
+        if (error) {
+          throw new Error(error.detail);
+        }
+
+        if (data.completed) {
+          const result = await task.getSavedOutput();
+
+          if (result.error) {
+            throw new Error(result.error.detail);
+          }
+
+          return {
+            returncode: data.returncode,
+            stdout: result.data || [],
+            stderr: data.error_text
+          };
+        }
+
+        await new Promise(resolve => setTimeout(resolve, delayCheck));
+      }
+    } finally {
+      await task._kill(true);
+    }
+  }
+
+  // Quick task with input
+  quickRun(cmd, { noSudo = false, input = [], timeout = 0 } = {}) {
+    return this.app.func("tasks.quick_run", {
+      timeout,
+      args: [cmd.trim()],
+      options: {
+        no_sudo: noSudo,
+        input_args: input
       }
     });
   }
