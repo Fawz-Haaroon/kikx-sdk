@@ -5,6 +5,7 @@ export { default as FileSystemService } from "./core/services/FileSystemService.
 export { default as ProxyService } from "./core/services/ProxyService.js";
 export { default as KVService } from "./core/services/KVService.js";
 export { default as OSService } from "./core/services/OSService.js";
+export { default as MicroService } from "./core/services/MicroService.js";
 // export { default as TaskerService } from "./core/services/TaskerService.js";
 
 export { default as KikxConfig } from "./core/Config.js";

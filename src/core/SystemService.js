@@ -1,4 +1,21 @@
 import Service from "./services/Service.js";
+import { generateUUID } from "../utils/uuid.js";
+
+// Alert
+class Alert {
+  constructor(app) {
+    this.app = app;
+    this.uid = generateUUID();
+  }
+  show(message) {
+    return this.app.system._alert({
+      uid: this.uid,
+      silent: true,
+      priority: "high",
+      message
+    });
+  }
+}
 
 export default class SystemService extends Service {
   constructor(app) {
@@ -13,8 +30,25 @@ export default class SystemService extends Service {
   // Close Sessions
   closeSession = sessionID =>
     this.request(`info/session/close/${sessionID}`, "POST");
-  // notify
-  alert = payload => this.fetch("alert", "POST", payload);
+  // Alert
+  _alert = payload => this.fetch("alert", "POST", payload);
+  // Alert Message
+  alert = (
+    message,
+    {
+      type = "info",
+      delay = 0,
+      priority = "normal",
+      silent = false,
+      extra = {}
+    } = {}
+  ) => {
+    return this._alert({ message, type, delay, priority, silent, extra });
+  };
+  //
+  createAlert(payload) {
+    return new Alert(this.app, payload);
+  }
   // App function x
   appFunc = (name, config) =>
     this.request("app/func", "POST", { name, config });

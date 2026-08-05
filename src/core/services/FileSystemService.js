@@ -88,4 +88,13 @@ export default class FileSystemService extends Service {
   copy = (source, dest) => this.request("copy", "POST", { source, dest });
   // Move
   move = (source, dest) => this.request("move", "POST", { source, dest });
+  // Expose
+  expose = path => this.request("expose", "POST", { path });
+  // Remove Expose
+  removeExpose = uid => this.request(`expose?uid=${uid}`, "DELETE");
+  // Clear Expose
+  clearExpose = () => this.request("clear-expose");
+  // Expose Serve
+  serve = (uid, path = "") =>
+    this.fetch(`serve/${uid}/${encodeURIComponent(path)}`);
 }
