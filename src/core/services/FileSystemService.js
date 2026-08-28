@@ -4,29 +4,31 @@ export default class FileSystemService extends Service {
   constructor(app) {
     super(app, "fs");
   }
-  // List files by limit & sorting
-  listFilesLimit(
+  // List files by limit & sorting -1 for all filed
+  listFiles(
     directory,
-    { offset = 0, limit = 50, sort = "name", asc = true } = {}
+    {
+      offset = 0,
+      limit = -1,
+      sort = "name",
+      asc = true,
+      thumbnails = false
+    } = {}
   ) {
     const params = new URLSearchParams({
       directory,
       offset: String(offset),
       limit: String(limit),
       sort,
-      asc: String(asc)
+      asc: String(asc),
+      thumbnails: String(thumbnails)
     });
 
-    const url = `list?${params.toString()}`;
-
-    return this.request(url);
+    return this.request(`list?${params.toString()}`);
   }
   // Get thumbnail
   thumbnail = filename =>
     this.request(`thumbnail?filename=${encodeURIComponent(filename)}`);
-  // List files in directory
-  listFiles = directory =>
-    this.request(`list?directory=${encodeURIComponent(directory)}`);
   // Read file
   readFile = filename =>
     this.request(`read?filename=${encodeURIComponent(filename)}`);

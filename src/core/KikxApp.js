@@ -13,6 +13,17 @@ export class KikxApp {
   constructor(config = {}) {
     this.config = new KikxConfig(config);
     this.system = new SystemService(this);
+
+    this.messageEventHandlers = new Map();
+
+    window.addEventListener("message", ({ data }) => {
+      const { event, payload } = data ?? {};
+      if (!event) return;
+
+      this.messageEventHandlers
+        .get(event)
+        ?.forEach(callback => callback(payload));
+    });
   }
 
   async run(callback = null) {
@@ -21,6 +32,11 @@ export class KikxApp {
     if (typeof callback === "function") {
       await callback(this.appInfo);
     }
+  }
+  
+  // Create Alert instace
+  createAlert() {
+    return this.system.createAlert();
   }
 
   // Get appID
@@ -46,6 +62,37 @@ export class KikxApp {
   // Run app funcx
   func(name, options) {
     return this.system.appFunc(name, options);
+  }
+
+  // UI post message events
+  onMessage(event, callback) {
+    if (!this.messageEventHandlers.has(event)) {
+      this.messageEventHandlers.set(event, new Set());
+    }
+
+    this.messageEventHandlers.get(event).add(callback);
+
+    return () => this.offMessage(event, callback);
+  }
+
+  offMessage(event, callback) {
+    const callbacks = this.messageEventHandlers.get(event);
+    if (!callbacks) return;
+
+    callbacks.delete(callback);
+
+    if (callbacks.size === 0) {
+      this.messageEventHandlers.delete(event);
+    }
+  }
+
+  onceMessage(event, callback) {
+    const wrapper = payload => {
+      this.offMessage(event, wrapper);
+      callback(payload);
+    };
+
+    return this.onMessage(event, wrapper);
   }
 }
 
@@ -78,29 +125,24 @@ export class KikxAppClient extends KikxApp {
         ?._ondata_callbacks?.forEach(fn => fn(payload.data));
     });
 
-    // Send event to kikx -> app
+    // visibilitychange
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
 
       if (!this.hasSocketState(WebSocket.OPEN)) {
         this._forceReconnect();
-        return;
       }
-
-      this.sendEvent("app:focus");
+      //
+      try {
+        this.ws.send(JSON.stringify({ event: "app-ping", payload: {} }));
+      } catch (_) {}
     });
-    //if (typeof document !== "undefined") {
-    // document.addEventListener("visibilitychange", () => {
-    //   if (!this.ws) return;
-    //   try {
-    //     if (document.visibilityState === "visible") {
-    //       this.sendEvent("app:focus");
-    //     } else if (document.visibilityState === "hidden") {
-    //       this.sendEvent("app:blur");
-    //     }
-    //   } catch (_) {}
-    // });
-    //}
+
+    this.onMessage("CHECK_WS", () => {
+      if (!this.hasSocketState(WebSocket.OPEN)) {
+        this._forceReconnect();
+      }
+    });
   }
 
   // Create app handler
@@ -181,14 +223,6 @@ export class KikxAppClient extends KikxApp {
         this.ws.close();
       }
     };
-
-    // this.ws.onerror = e => {
-    //   this._callEvent("ws:onerror", e);
-    //   if (this.ws) {
-    //     this.ws.close();
-    //     this.ws = null;
-    //   }
-    // };
   }
 
   _scheduleReconnect() {

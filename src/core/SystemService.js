@@ -6,14 +6,54 @@ class Alert {
   constructor(app) {
     this.app = app;
     this.uid = generateUUID();
+
+    this._sticky = false;
+    this._silent = false;
+    this._priority = "normal";
+    this._label = null;
+    this._extra = {};
   }
-  show(message) {
+  setSticky(v = true) {
+    this._sticky = Boolean(v);
+    return this;
+  }
+  setSilent(v = true) {
+    this._silent = Boolean(v);
+    return this;
+  }
+  setPriority(v = "normal") {
+    if (!["less", "normal", "high"].includes(v)) {
+      throw new Error(`Invalid priority option: ${v}`);
+    }
+    this._priority = v;
+    return this;
+  }
+  setExtra(k, v) {
+    this._extra[k] = v;
+    return this;
+  }
+  setIsCode(v = true) {
+    this.setExtra("isCode", Boolean(v));
+    return this;
+  }
+  setLabel(label = null) {
+    this._label = label;
+    return this;
+  }
+  show(message, type = "info") {
     return this.app.system._alert({
+      type,
+      message,
       uid: this.uid,
-      silent: true,
-      priority: "high",
-      message
+      label: this._label,
+      extra: this._extra,
+      silent: this._silent,
+      sticky: this._sticky,
+      priority: this._priority
     });
+  }
+  hide() {
+    return this.show("");
   }
 }
 
@@ -33,21 +73,12 @@ export default class SystemService extends Service {
   // Alert
   _alert = payload => this.fetch("alert", "POST", payload);
   // Alert Message
-  alert = (
-    message,
-    {
-      type = "info",
-      delay = 0,
-      priority = "normal",
-      silent = false,
-      extra = {}
-    } = {}
-  ) => {
-    return this._alert({ message, type, delay, priority, silent, extra });
+  alert = (message, { type = "info", priority = "normal" } = {}) => {
+    return this._alert({ message, type, priority });
   };
-  //
-  createAlert(payload) {
-    return new Alert(this.app, payload);
+  // Create alert instance
+  createAlert() {
+    return new Alert(this.app);
   }
   // App function x
   appFunc = (name, config) =>

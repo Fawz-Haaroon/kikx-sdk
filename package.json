@@ -1,6 +1,6 @@
 {
   "name": "kikx-sdk",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Kikx App Sdk",
   "main": "dist/kikx-sdk.cjs.js",
   "module": "dist/kikx-sdk.esm.js",
