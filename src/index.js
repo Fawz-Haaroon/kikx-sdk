@@ -1,4 +1,7 @@
-export { default as AppTasks } from "./core/modules/AppTasks.js";
+export { getKikxApp } from "./core/KikxApp.js";
+export { default as KikxConfig } from "./core/Config.js";
+export { createKikxApp as createApp } from "./core/KikxApp.js";
+export { createKikxClient as createClientApp } from "./core/KikxApp.js";
 
 export { default as Service } from "./core/services/Service.js";
 export { default as FileSystemService } from "./core/services/FileSystemService.js";
@@ -6,11 +9,8 @@ export { default as ProxyService } from "./core/services/ProxyService.js";
 export { default as KVService } from "./core/services/KVService.js";
 export { default as OSService } from "./core/services/OSService.js";
 export { default as MicroService } from "./core/services/MicroService.js";
-// export { default as TaskerService } from "./core/services/TaskerService.js";
+export { default as TaskerService } from "./core/services/TaskerService.js";
 
-export { default as KikxConfig } from "./core/Config.js";
-
-export { createKikxApp as createApp } from "./core/KikxApp.js";
-export { createKikxClient as createClientApp } from "./core/KikxApp.js";
-
-export { getKikxApp } from "./core/KikxApp.js";
+export { default as Kpm } from "./core/system/Kpm.js";
+export { default as Alerts } from "./core/system/Alerts.js";
+export { default as Invoker } from "./core/system/Invoker.js";

@@ -1,113 +1,104 @@
-import { request } from "./Api.js";
-import Handler from "./Handler.js";
-import SystemService from "./SystemService.js";
-
 import KikxConfig from "./Config.js";
+import SystemService from "./SystemService.js";
+import EventEmitter from "../utils/event.js";
 
-// Singleton state
+// ---------------------- Singleton state
+
 let instance = null;
 let instanceType = null;
 
-// Base App
+// ---------------------- Base App
+
 export class KikxApp {
   constructor(config = {}) {
     this.config = new KikxConfig(config);
     this.system = new SystemService(this);
 
-    this.messageEventHandlers = new Map();
+    // App full info
+    this.info = null;
 
+    // Events and Messages Handlers
+    this._appEvents = new EventEmitter();
+    this._messageEvents = new EventEmitter();
+
+    // Message handler
     window.addEventListener("message", ({ data }) => {
       const { event, payload } = data ?? {};
       if (!event) return;
 
-      this.messageEventHandlers
-        .get(event)
-        ?.forEach(callback => callback(payload));
+      this._messageEvents.emit(event, payload);
     });
   }
 
-  async run(callback = null) {
-    this.appInfo = await this.fetchAppInfo();
-
-    if (typeof callback === "function") {
-      await callback(this.appInfo);
-    }
-  }
-  
-  // Create Alert instace
-  createAlert() {
-    return this.system.createAlert();
-  }
+  // ---------------------- App
 
   // Get appID
-  getAppID = () => {
-    return this.config.getAppID();
-  };
+  getAppID = () => this.config.getAppID();
 
   // Get app api url
-  getUrl = end => {
-    return this.config.getUrl(end);
-  };
+  getUrl = end => this.config.getUrl(end);
 
   // Get app ws url
-  getWsUrl = () => {
-    return this.config.getWsUrl();
-  };
+  getWsUrl = () => this.config.getWsUrl();
 
-  // Get app info
-  fetchAppInfo() {
-    return this.system.appInfo();
-  }
+  // ---------------------- Message Events
 
-  // Run app funcx
-  func(name, options) {
-    return this.system.appFunc(name, options);
-  }
-
-  // UI post message events
   onMessage(event, callback) {
-    if (!this.messageEventHandlers.has(event)) {
-      this.messageEventHandlers.set(event, new Set());
-    }
-
-    this.messageEventHandlers.get(event).add(callback);
-
-    return () => this.offMessage(event, callback);
+    return this._messageEvents.on(event, callback);
   }
 
   offMessage(event, callback) {
-    const callbacks = this.messageEventHandlers.get(event);
-    if (!callbacks) return;
-
-    callbacks.delete(callback);
-
-    if (callbacks.size === 0) {
-      this.messageEventHandlers.delete(event);
-    }
+    this._messageEvents.off(event, callback);
   }
 
   onceMessage(event, callback) {
-    const wrapper = payload => {
-      this.offMessage(event, wrapper);
-      callback(payload);
-    };
+    return this._messageEvents.once(event, callback);
+  }
 
-    return this.onMessage(event, wrapper);
+  // ---------------------- App Events
+
+  on(event, callback) {
+    return this._appEvents.on(event, callback);
+  }
+
+  once(event, callback) {
+    return this._appEvents.once(event, callback);
+  }
+
+  off(event, callback) {
+    this._appEvents.off(event, callback);
+  }
+
+  // ---------------------- Start
+
+  async _run() {
+    const { data, error } = await this.system.appInfo();
+
+    if (error) {
+      throw new Error("Error fetching app info: " + error.detail);
+    }
+
+    await this._appEvents.emit("start", data, false);
+
+    this.info = data;
+  }
+
+  async run(callback = null) {
+    await this._run();
+
+    if (typeof callback === "function") {
+      callback(this.info);
+    }
   }
 }
 
-// Client App
+// ---------------------- Client App
+
 export class KikxAppClient extends KikxApp {
   constructor(config = {}) {
     super(config);
 
-    // App Config
-    this.appConfig = {};
-
     this.ws = null;
-    this.eventCallbacks = {};
-
-    this.appEventHandlers = new Map();
 
     this.reconnectAttempts = 0;
     this.reconnectDelay = 1000;
@@ -118,13 +109,6 @@ export class KikxAppClient extends KikxApp {
       this.reconnectAttempts = 0;
     });
 
-    // Event: App-specific handler
-    this.on("handler-data", payload => {
-      this.appEventHandlers
-        .get(payload.id)
-        ?._ondata_callbacks?.forEach(fn => fn(payload.data));
-    });
-
     // visibilitychange
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
@@ -132,7 +116,7 @@ export class KikxAppClient extends KikxApp {
       if (!this.hasSocketState(WebSocket.OPEN)) {
         this._forceReconnect();
       }
-      //
+
       try {
         this.ws.send(JSON.stringify({ event: "app-ping", payload: {} }));
       } catch (_) {}
@@ -143,18 +127,6 @@ export class KikxAppClient extends KikxApp {
         this._forceReconnect();
       }
     });
-  }
-
-  // Create app handler
-  createHandler() {
-    const handler = new Handler();
-    this.appEventHandlers.set(handler.handlerID, handler);
-    return handler;
-  }
-
-  // Remove app handler
-  removeHandler(handlerID) {
-    this.appEventHandlers.delete(handlerID);
   }
 
   _forceReconnect() {
@@ -184,7 +156,7 @@ export class KikxAppClient extends KikxApp {
 
     this.ws.onopen = e => {
       this._clearReconnectTimer();
-      this._callEvent("ws:onopen", e);
+      this._appEvents.emit("ws:open", e);
     };
 
     this.ws.onmessage = e => {
@@ -197,27 +169,23 @@ export class KikxAppClient extends KikxApp {
         return;
       }
 
-      this._callEvent("ws:onmessage", e);
+      this._appEvents.emit("ws:onmessage", e);
 
       const { event, payload } = message;
 
-      if (["connected", "reconnected"].includes(event)) {
-        this.appConfig = payload.config;
-      }
-
       if (event) {
-        this._callEvent(event, payload);
+        this._appEvents.emit(event, payload);
       }
     };
 
     this.ws.onclose = e => {
       this.ws = null;
-      this._callEvent("ws:onclose", e);
+      this._appEvents.emit("ws:onclose", e);
       this._scheduleReconnect();
     };
 
     this.ws.onerror = e => {
-      this._callEvent("ws:onerror", e);
+      this._appEvents.emit("ws:onerror", e);
 
       if (this.hasSocketState(WebSocket.CONNECTING, WebSocket.OPEN)) {
         this.ws.close();
@@ -228,11 +196,11 @@ export class KikxAppClient extends KikxApp {
   _scheduleReconnect() {
     if (this._reconnectTimer) return;
 
-    console.log("Reconnecting...");
+    console.log("WS-Reconnecting...");
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log("Reconecting failed!");
-      this._callEvent("ws:reconnect_failed");
+      console.log("WS-Reconecting failed!");
+      this._appEvents.emit("ws:reconnect_failed");
       return;
     }
 
@@ -251,44 +219,7 @@ export class KikxAppClient extends KikxApp {
     }
   }
 
-  // Add app ws event handler
-  on(event, callback) {
-    if (!this.eventCallbacks[event]) {
-      this.eventCallbacks[event] = [];
-    }
-    this.eventCallbacks[event].push(callback);
-  }
-
-  once(event, callback) {
-    const wrapper = data => {
-      this.off(event, wrapper);
-      callback(data);
-    };
-
-    this.on(event, wrapper);
-  }
-
-  // Remove app ws event handler
-  off(event, callback) {
-    if (!this.eventCallbacks[event]) return;
-
-    this.eventCallbacks[event] = this.eventCallbacks[event].filter(
-      fn => fn !== callback
-    );
-  }
-
-  // Call ws event handler
-  _callEvent(event, data = null) {
-    for (const fn of this.eventCallbacks[event] ?? []) {
-      try {
-        fn(data);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  }
-
-  // Send Json data to app using ws
+  // Send JSON data to app using ws
   send(data) {
     if (this.hasSocketState(WebSocket.OPEN)) {
       this.ws.send(JSON.stringify(data));
@@ -298,9 +229,14 @@ export class KikxAppClient extends KikxApp {
   sendEvent(event, payload = null) {
     this.send({ event, payload });
   }
+
   async run(callback = null) {
+    await this._run();
+
     if (typeof callback === "function") {
-      this.once("connected", callback);
+      this.once("connected", () => {
+        callback(this.info);
+      });
     }
 
     if (this.hasSocketState(WebSocket.CONNECTING, WebSocket.OPEN)) {
@@ -311,7 +247,8 @@ export class KikxAppClient extends KikxApp {
   }
 }
 
-// Create Base App
+// ---------------------- Create Base App
+
 export function createKikxApp(config = null) {
   if (instance) {
     if (instanceType !== "base") {
@@ -319,6 +256,7 @@ export function createKikxApp(config = null) {
         `KikxApp already created as '${instanceType}', cannot create 'base'.`
       );
     }
+
     return instance;
   }
 
@@ -328,7 +266,8 @@ export function createKikxApp(config = null) {
   return instance;
 }
 
-// Create Client App
+// ---------------------- Create Client App
+
 export function createKikxClient(config = null) {
   if (instance) {
     if (instanceType !== "client") {
@@ -336,6 +275,7 @@ export function createKikxClient(config = null) {
         `KikxApp already created as '${instanceType}', cannot create 'client'.`
       );
     }
+
     return instance;
   }
 
@@ -345,12 +285,14 @@ export function createKikxClient(config = null) {
   return instance;
 }
 
-// Get Existing Instance
+// ---------------------- Get Existing Instance
+
 export function getKikxApp() {
   if (!instance) {
     throw new Error(
       "KikxApp not created. Call createKikxApp() or createKikxClient() first."
     );
   }
+
   return instance;
 }

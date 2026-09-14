@@ -1,33 +1,56 @@
-import { request } from "../Api.js";
+import { request as apiRequest } from "../Api.js";
 
 export default class Service {
   constructor(app, name) {
     this.app = app;
     this.serviceName = name;
     this.baseURL = `/service/${this.serviceName}`;
+
+    this._apiType = "request";
+  }
+  
+  setRequestType() {
+    this._apiType = "request";
   }
 
-  async request(endpoint, method = "GET", body = null, isJson = true) {
-    let headers = {};
+  setFetchType() {
+    this._apiType = "fetch";
+  }
 
+  api = (...args) =>
+    this._apiType === "request" ? this.request(...args) : this.fetch(...args);
+
+  request = (
+    endpoint,
+    {
+      method = "GET",
+      body = undefined,
+      params = {},
+      headers = {},
+      ...options
+    } = {}
+  ) => {
     Object.assign(headers, { "kikx-app-id": this.app.getAppID() });
+    const url = this.app.getUrl(`${this.baseURL}/${endpoint}`);
 
-    return await request(
-      this.app.getUrl(`${this.baseURL}/${endpoint}`),
+    return apiRequest(url, {
       method,
       body,
-      isJson,
-      headers
-    );
-  }
+      params,
+      headers,
+      ...options
+    });
+  };
 
-  async fetch(endpoint, method = "GET", body = null, isJson = true) {
-    const res = await this.request(endpoint, method, body, isJson);
+  fetch = async (...args) => {
+    const { data, error } = await this.request(...args);
 
-    if (!res.ok) {
-      throw new Error(res.error?.detail || "Unknown Error");
+    if (error) {
+      throw new Error(error.detail || "Error fetching data");
     }
 
-    return res.data;
-  }
+    return data;
+  };
+
+  health = () => this.fetch("health");
 }

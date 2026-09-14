@@ -1,51 +1,113 @@
 export async function request(
   endpoint,
-  method = "GET",
-  body = null,
-  isJson = true,
-  headers = {}
+  {
+    method = "GET",
+    body = undefined,
+    params = {},
+    headers = {},
+    ...options
+  } = {}
 ) {
-  headers = { ...headers };
-
-  if (body && isJson) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(body);
-  }
-
   try {
-    const response = await fetch(endpoint, {
+    const url = new URL(endpoint);
+
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.set(key, String(value));
+        }
+      });
+    }
+
+    const isFormData = body instanceof FormData;
+
+    const response = await fetch(url, {
       method,
-      headers,
-      body
+      headers: {
+        // Only set Content-Type for non-FormData bodies
+        ...(body !== undefined &&
+          !isFormData && {
+            "Content-Type": "application/json"
+          }),
+        ...headers
+      },
+
+      ...(body !== undefined && {
+        body: isFormData ? body : JSON.stringify(body)
+      }),
+
+      ...options
     });
 
-    const contentType = response.headers.get("content-type");
-    let data = null;
+    // Handle empty responses
+    if (response.status === 204) {
+      return {
+        data: null,
+        error: null
+      };
+    }
 
-    if (response.status !== 204) {
-      if (contentType?.includes("application/json")) {
-        data = await response.json();
-      } else if (contentType?.includes("text/")) {
-        data = await response.text();
-      } else if (contentType?.includes("application/octet-stream")) {
-        data = await response.blob();
-      }
+    const contentType = response.headers.get("content-type") || "";
+    let result;
+
+    if (contentType.includes("application/json")) {
+      result = await response.json();
+    } else if (contentType.includes("text/")) {
+      result = await response.text();
+    } else {
+      result = await response.blob();
+    }
+
+    if (!response.ok) {
+      return {
+        data: null,
+        error: {
+          status: response.status,
+          message:
+            result?.detail ||
+            result?.message ||
+            `Request failed with status ${response.status}`,
+          detail: result?.detail
+        }
+      };
     }
 
     return {
-      ok: response.ok,
-      code: response.status,
-      contentType,
-      data: response.ok ? data : null,
-      error: response.ok ? null : data || `Error ${response.status}`
+      data: result,
+      error: null,
+      contentType
     };
-  } catch (err) {
+  } catch (error) {
     return {
-      ok: false,
-      code: 500,
       data: null,
-      error: err.message || "Unknown error"
+      error: {
+        status: null,
+        message: error.message
+      }
     };
   }
 }
 
+export async function fetchData(
+  endpoint,
+  {
+    method = "GET",
+    body = undefined,
+    params = {},
+    headers = {},
+    ...options
+  } = {}
+) {
+  const { data, error } = await request(endpoint, {
+    method,
+    body,
+    params,
+    headers,
+    ...options
+  });
+  if (error) {
+    throw new Error(error.detail || "Error fetching data");
+  }
+
+  return data;
+}

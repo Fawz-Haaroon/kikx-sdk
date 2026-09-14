@@ -4,8 +4,9 @@ export default class FileSystemService extends Service {
   constructor(app) {
     super(app, "fs");
   }
-  // List files by limit & sorting -1 for all filed
-  listFiles(
+
+  // List files by limit & sorting -1 for all files
+  listFiles = (
     directory,
     {
       offset = 0,
@@ -14,89 +15,162 @@ export default class FileSystemService extends Service {
       asc = true,
       thumbnails = false
     } = {}
-  ) {
-    const params = new URLSearchParams({
-      directory,
-      offset: String(offset),
-      limit: String(limit),
-      sort,
-      asc: String(asc),
-      thumbnails: String(thumbnails)
+  ) =>
+    this.api("list", {
+      params: { directory, offset, limit, sort, asc, thumbnails }
     });
 
-    return this.request(`list?${params.toString()}`);
-  }
   // Get thumbnail
   thumbnail = filename =>
-    this.request(`thumbnail?filename=${encodeURIComponent(filename)}`);
+    this.api("thumbnail", {
+      params: { filename }
+    });
+
   // Read file
   readFile = filename =>
-    this.request(`read?filename=${encodeURIComponent(filename)}`);
+    this.api("read", {
+      params: { filename }
+    });
+
   // Write file
-  writeFile = (filename, content) =>
-    this.request("write", "POST", { filename, content });
+  writeFile = (filename, content, { mode = "write", ensureDir = false } = {}) =>
+    this.api("write", {
+      method: "POST",
+      body: { filename, content, mode, ensure_dir: ensureDir }
+    });
+
+  // Append to file
+  appendFile = (filename, content) =>
+    this.writeFile(filename, content, { mode: "append" });
+
   // Delete file
   deleteFile = filename =>
-    this.request(`delete?filename=${encodeURIComponent(filename)}`, "DELETE");
+    this.api("delete", {
+      method: "DELETE",
+      params: { filename }
+    });
+
   // Upload file
   uploadFile = (file, dest) => {
     const formData = new FormData();
     formData.append("files", file);
 
-    return this.request(
-      `upload?dest=${encodeURIComponent(dest)}`,
-      "POST",
-      formData,
-      false
-    );
+    return this.api("upload", {
+      method: "POST",
+      body: formData,
+      params: { dest }
+    });
   };
+
+  // Download file
+  downloadFile = path =>
+    this.api("download", {
+      params: { path }
+    });
+
   // Upload files
-  uploadFiles(files, dest) {
+  uploadFiles = (files, dest) => {
     const formData = new FormData();
 
-    files.forEach(file => {
-      formData.append("files", file);
-    });
+    files.forEach(file => formData.append("files", file));
 
-    return this.request(
-      `upload?dest=${encodeURIComponent(dest)}`,
-      "POST",
-      formData,
-      false
-    );
-  }
+    return this.api("upload", {
+      method: "POST",
+      body: formData,
+      params: { dest }
+    });
+  };
+
   // Create File
   createFile = filename =>
-    this.request("create_file", "POST", {
-      filename
+    this.api("create_file", {
+      method: "POST",
+      body: { filename }
     });
+
   // Create directory
   createDirectory = dirname =>
-    this.request("create_directory", "POST", { dirname });
+    this.api("create_directory", {
+      method: "POST",
+      body: { dirname }
+    });
+
   // Delete directory
   deleteDirectory = dirname =>
-    this.request(
-      `delete_directory?dirname=${encodeURIComponent(dirname)}`,
-      "DELETE"
-    );
+    this.api("delete_directory", {
+      method: "DELETE",
+      params: { dirname }
+    });
+
   // Delete list
-  deleteList = paths => this.request("delete-list", "POST", { paths });
+  deleteList = paths =>
+    this.api("delete-list", {
+      method: "POST",
+      body: { paths }
+    });
+
   // Rename
   rename = (source, new_name) =>
-    this.request("rename", "POST", { source, new_name });
+    this.api("rename", {
+      method: "POST",
+      body: { source, new_name }
+    });
+
   // Info
-  info = path => this.request(`info?path=${encodeURIComponent(path)}`);
+  info = path =>
+    this.api("info", {
+      params: { path }
+    });
+
   // Copy
-  copy = (source, dest) => this.request("copy", "POST", { source, dest });
+  copy = (source, dest) =>
+    this.api("copy", {
+      method: "POST",
+      body: { source, dest }
+    });
+
+  // Copy File
+  copyFile = (source, dest, { override = false } = {}) =>
+    this.request("copy-file", {
+      method: "POST",
+      body: { source, dest, override }
+    });
+
   // Move
-  move = (source, dest) => this.request("move", "POST", { source, dest });
-  // Expose
-  expose = path => this.request("expose", "POST", { path });
+  move = (source, dest) =>
+    this.api("move", {
+      method: "POST",
+      body: { source, dest }
+    });
+
+  // Expose path for serve files
+  expose = (path, expires = null) =>
+    this.api("expose", {
+      method: "POST",
+      body: { path, expires }
+    });
+
   // Remove Expose
-  removeExpose = uid => this.request(`expose?uid=${uid}`, "DELETE");
+  removeExpose = uid =>
+    this.api("expose", {
+      method: "DELETE",
+      params: { uid }
+    });
+
   // Clear Expose
-  clearExpose = () => this.request("clear-expose");
-  // Expose Serve
-  serve = (uid, path = "") =>
-    this.fetch(`serve/${uid}/${encodeURIComponent(path)}`);
+  clearExpose = () => this.api("clear-expose");
+
+  // Get file url
+  getServeUrl = (uid, path = "", absolute = false) => {
+    const url = `${this.baseURL}/serve/${uid}/${encodeURIComponent(path)}`;
+
+    return absolute ? this.app.getUrl(url) : url;
+  };
+
+  // Get full file url
+  getServeAbsUrl = (uid, path = "") => this.getServeUrl(uid, path, true);
+
+  // Get serve file
+  getServeFile = (uid, path = "") =>
+    this.api(`serve/${uid}/${encodeURIComponent(path)}`);
 }

@@ -4,11 +4,26 @@ export default class ProxyService extends Service {
   constructor(app) {
     super(app, "proxy");
   }
-  fetch(url, { method = "GET", headers = {}, body = null } = {}) {
-    return globalThis.fetch(`${this.baseURL}?url=${encodeURIComponent(url)}`, {
+  
+  // Proxy Request non-cors blocking response
+  proxyRequest = (
+    url,
+    {
+      method = "GET",
+      params = {},
+      body = undefined,
+      headers = {},
+      ...options
+    } = {}
+  ) =>
+    this.request("", {
       method,
+      params: {
+        __proxy_target: url,
+        ...params
+      },
+      body,
       headers,
-      ...(body != null && { body })
+      ...options
     });
-  }
 }

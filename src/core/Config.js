@@ -6,10 +6,11 @@ class KikxConfig {
     this.customWsUrl = wsUrl;
     this.customAppID = appID || window.location.pathname.split("/")[2] || null;
   }
-  
-  getAppID = () => this.customAppID
-  
 
+  // Get AppID
+  getAppID = () => this.customAppID;
+
+  // Configure custom API URLs
   configureUrls(options = {}) {
     const { apiUrl, wsUrl, appID } = options;
 
@@ -18,26 +19,25 @@ class KikxConfig {
     if (appID) this.customAppID = appID;
   }
 
-  getDefaultBase() {
+  // Get default base URL
+  getDefaultBase = () => {
     const { protocol, hostname, port } = window.location;
     return `${protocol}//${hostname}${port ? `:${port}` : ""}`;
-  }
+  };
 
-  apiUrl() {
-    return this.customApiUrl || this.getDefaultBase();
-  }
+  // Get API URL
+  getApiUrl = () => this.customApiUrl || this.getDefaultBase();
 
-  getWsUrl() {
+  // Get WebSocket URL
+  getWsUrl = () => {
     if (this.customWsUrl) return this.customWsUrl;
 
     const { protocol, hostname, port } = window.location;
     return `${protocol === "https:" ? "wss:" : "ws:"}//${hostname}${port ? `:${port}` : ""}`;
-  }
+  };
 
-  getUrl(end) {
-    const endUrl = end.startsWith("/") ? end : `/${end}`;
-    return this.apiUrl() + endUrl;
-  }
+  // Get full API URL with endpoint
+  getUrl = (end = "") => `${this.getApiUrl()}${end.startsWith("/") ? end : `/${end}`}`;
 }
 
 export default KikxConfig;
