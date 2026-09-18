@@ -35,7 +35,7 @@ class AppInstaller {
     });
 
     if (error) {
-      throw new Error(error.detail);
+      throw new Error(error.detail || error.message);
     }
 
     this.appData = data;
@@ -59,7 +59,7 @@ class AppInstaller {
     );
 
     if (error) {
-      throw new Error(error.detail);
+      throw new Error(error.detail || error.message);
     }
 
     this.appData = data;
@@ -89,7 +89,7 @@ class AppInstaller {
     );
 
     if (error) {
-      throw new Error(error.detail);
+      throw new Error(error.detail || error.message);
     }
 
     this.appData = data;
@@ -118,7 +118,7 @@ class AppInstaller {
     );
 
     if (error) {
-      throw new Error(error.detail);
+      throw new Error(error.detail || error.message);
     }
 
     return data;
@@ -213,7 +213,7 @@ export default class Kpm {
     });
 
     if (error) {
-      throw new Error(error.detail);
+      throw new Error(error.detail || error.message);
     }
 
     return data;
