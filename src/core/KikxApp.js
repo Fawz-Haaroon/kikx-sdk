@@ -75,7 +75,9 @@ export class KikxApp {
     const { data, error } = await this.system.appInfo();
 
     if (error) {
-      throw new Error("Error fetching app info: " + error.detail);
+      throw new Error(
+        "Error fetching app info: " + (error.detail || error.message)
+      );
     }
 
     await this._appEvents.emit("start", data, false);

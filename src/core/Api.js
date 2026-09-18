@@ -106,7 +106,7 @@ export async function fetchData(
     ...options
   });
   if (error) {
-    throw new Error(error.detail || "Error fetching data");
+    throw new Error(error.detail || error.message || "Error fetching data");
   }
 
   return data;

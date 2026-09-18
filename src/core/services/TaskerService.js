@@ -165,7 +165,7 @@ class Task {
     });
 
     if (error) {
-      throw new Error(error.detail);
+      throw new Error(error.detail || error.message);
     }
 
     this.taskID = data.id;
@@ -192,7 +192,7 @@ class Task {
     });
 
     if (error) {
-      throw new Error(error.detail);
+      throw new Error(error.detail || error.message);
     }
 
     return data;
@@ -211,7 +211,7 @@ class Task {
     });
 
     if (error) {
-      throw new Error(error);
+      throw new Error(error.detail || error.message);
     }
 
     this.running = false;
@@ -538,7 +538,7 @@ export default class Tasker extends Service {
 
             return resolve({
               data: null,
-              error: new Error(result.error.detail)
+              error: new Error(result.error.detail || result.error.message)
             });
           }
 
@@ -571,7 +571,7 @@ export default class Tasker extends Service {
           }
 
           if (error) {
-            return fail(new Error(error.detail));
+            return fail(new Error(error.detail || error.message));
           }
 
           if (data.completed) {
@@ -652,14 +652,14 @@ export default class Tasker extends Service {
         const { data, error } = await task.getInfo();
 
         if (error) {
-          throw new Error(error.detail);
+          throw new Error(error.detail || error.message);
         }
 
         if (data.completed) {
           const result = await task.getSavedOutput();
 
           if (result.error) {
-            throw new Error(result.error.detail);
+            throw new Error(result.error.detail || result.error.message);
           }
 
           return {

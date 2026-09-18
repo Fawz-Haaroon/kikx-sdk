@@ -46,7 +46,7 @@ export default class Service {
     const { data, error } = await this.request(...args);
 
     if (error) {
-      throw new Error(error.detail || "Error fetching data");
+      throw new Error(error.detail || error.message || "Error fetching data");
     }
 
     return data;
